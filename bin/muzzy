@@ -1,0 +1,206 @@
+#!/usr/bin/env ruby
+
+require 'rubygems'
+require 'optparse'
+require 'csv'
+Version = "1.0.0"
+
+options = {
+  file: '',
+  mysql_config: {
+    user: 'root',
+    host: 'localhost',
+    password: '',
+    database: 'muzzy',
+  }
+}
+
+mysql_cmd = `which mysql`.to_s.chomp
+if mysql_cmd == ''
+  puts "cannot find mysql client"
+  exit 1
+end
+
+ARGV.options do |opt|
+  begin
+    opt.on('-u', "--user [USER]", String, 'mysql user') {|user|
+      options[:mysql_config][:user] = user
+    }
+    opt.on('-h [HOST]', 'mysql host') {|v| options[:mysql_config][:host] = v }
+    opt.on('-p [PASSWORD]', 'mysql password') {|v| options[:mysql_config][:password] = v }
+    opt.on('-f', '--file [FILEPATH]', 'path to target file') {|v|
+      if File.directory?(v)
+        puts "muzzy: #{v}: is directory"
+        exit Errno::ENOENT::Errno
+      end
+      unless File.exists?(v)
+        puts "muzzy: #{v}: No such file or directory"
+        exit Errno::ENOENT::Errno
+      end
+      options[:file] = v
+    }
+    opt.on('-v', '--version') {
+      puts opt.ver
+      exit
+    }
+
+    opt.parse!
+
+    if options[:file].nil? || options[:file] == ''
+      puts opt.help
+      exit 1
+    end
+  rescue => e
+    $stderr.puts("[ERROR] #{e.message}")
+    exit 1
+  end
+end
+
+# confirm database
+cmd = "#{mysql_cmd} -u #{options[:mysql_config][:user]} -h #{options[:mysql_config][:host]}"
+confirm_database_res = `#{cmd} -e "SHOW DATABASES LIKE '#{options[:mysql_config][:database]}'"`
+if confirm_database_res == ''
+  puts "creating database #{options[:mysql_config][:database]}"
+  create_database_res = `#{cmd} -e "CREATE DATABASE #{options[:mysql_config][:database]}"`
+  if $? == 0
+    puts "creating database #{options[:mysql_config][:database]} done"
+  end
+end
+
+kakasi_path = File.absolute_path('../vendor/bin/kakasi')
+unless File.exists?(kakasi_path)
+  puts "cannot find kakasi. please check kakasi installation is successed."
+  puts "expect path: #{File.absolute_path('../vendor/bin/kakasi')}"
+  exit 1
+end
+
+
+def fetch_header_and_first_row(filepath, col_sep)
+  i = 0
+  header_row = nil
+  first_row = nil
+  CSV.foreach(filepath, col_sep: col_sep) do |row|
+    if i == 0
+      header_row = row
+    elsif i == 1
+      first_row = row
+    else
+      break
+    end
+    i += 1
+  end
+  return [header_row, first_row]
+end
+
+
+## get first and second rows
+
+header_row = []
+first_row = [] # first row means first data row
+fields_terminated_by = ","
+if options[:file] =~ /\.tsv\z/
+  # tsv
+  header_row, first_row = fetch_header_and_first_row(options[:file], "\t")
+  fields_terminated_by = "\t"
+else
+  # csv(,) or csv(\t) or something
+
+  # trying to csv
+  csv_header_row, csv_first_row = fetch_header_and_first_row(options[:file], ",")
+  # trying to tsv
+  tsv_header_row, tsv_first_row = fetch_header_and_first_row(options[:file], "\t")
+
+  if csv_header_row.length == tsv_header_row.length
+    if csv_header_row.length == 1 && tsv_first_row.length == 1
+      # single col file
+      header_row, first_row = csv_header_row, csv_first_row
+    else
+      puts "illegal file"
+      exit 1
+    end
+  end
+
+  if csv_header_row.length > tsv_header_row.length
+    # csv
+    header_row, first_row = csv_header_row, csv_first_row
+  else
+    # tsv
+    header_row, first_row = tsv_header_row, tsv_first_row
+    fields_terminated_by = "\t"
+  end
+end
+header_row = header_row.map(&:to_s)
+
+# guess header_row is data row or not
+header_row_is_header = nil
+
+if header_row.any?{|str| str.match(/_id/) }
+  header_row_is_header = true
+elsif header_row.any?{|str| str.match(/NULL/) }
+  header_row_is_header = false
+elsif header_row.map(&:to_i).select{|x| x <= 0}.count != first_row.map(&:to_i).select{|x| x <= 0}.count
+  # i guess number col count is different, header_row is header.
+  header_row_is_header = true
+else
+  # cannot judge header is header or not
+  puts "header row is"
+  puts header_row.join(',')
+  puts "first row is"
+  puts first_row.join(',')
+  puts "header row is header?(not data, right?)"
+  loop do
+    y_or_n = gets.to_s.chomp
+    if y_or_n.match(/\A[Yy]\z/)
+      header_row_is_header = true
+      break
+    end
+    if y_or_n.match(/\A[Nn]\z/)
+      header_row_is_header = false
+      break
+    end
+    puts "plase enter y or n"
+  end
+end
+
+if header_row_is_header
+  header_row = header_row.map do |str|
+    `echo #{str} | #{kakasi_path} -Ja -Ha -Ka -Ea -i utf8 -o utf8`.to_s.chomp
+  end
+end
+
+Cell = Struct.new(:type, :name)
+if header_row_is_header
+  row_data_types = header_row.map do |str|
+    if str.match(/\A[\d,]+\z/)
+      # number
+      Cell.new('integer', str)
+    else
+      Cell.new('text', str)
+    end
+  end
+else
+  # header row is data
+  row_data_types = header_row.map.with_index do |str, i|
+    if str.match(/\A[\d,]+\z/)
+      # number
+      Cell.new('integer', "col#{i}")
+    else
+      Cell.new('text', "col#{i}")
+    end
+  end
+end
+
+filename = File.basename(options[:file])
+table_name = filename.match(/([^.]+)(\.\w+)?/)[1]
+
+create_table_sql = "CREATE TABLE #{table_name} (#{row_data_types.map{|x| "#{x.name} #{x.type}"}.join(',')})"
+
+confirm_table_res = `#{cmd} #{options[:mysql_config][:database]} -e "SHOW CREATE TABLE #{table_name}" 2>&1`
+if confirm_table_res.to_s.match(/\AERROR 1146/)
+  create_table_cmd = "#{mysql_cmd} -u #{options[:mysql_config][:user]} -h #{options[:mysql_config][:host]}"
+  create_table_res = `#{create_table_cmd} #{options[:mysql_config][:database]} -e "#{create_table_sql}"`
+end
+
+mysql_import_command = "mysqlimport -u #{options[:mysql_config][:user]} -h #{options[:mysql_config][:host]} #{options[:mysql_config][:database]} --local #{options[:file]} --fields_terminated_by='#{fields_terminated_by}' --ignore-lines=#{header_row_is_header ? 1 : 0}"
+`#{mysql_import_command}`
+
