@@ -9,7 +9,8 @@ bundle install
 
 ### install kakasi
 cd vendor
+dir=$(cd $(dirname $0); pwd)
 gzip -dc kakasi-2.3.6.tar.gz | tar xvf -
 cd kakasi-2.3.6
-./configure --prefix=`pwd`/..
+./configure --prefix=$dir
 make && make install
