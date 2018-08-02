@@ -67,10 +67,11 @@ if confirm_database_res == ''
   end
 end
 
-kakasi_path = File.absolute_path('../vendor/bin/kakasi')
+kakasi_path = File.expand_path('..', __FILE__) + "/../vendor/bin"
+
 unless File.exists?(kakasi_path)
   puts "cannot find kakasi. please check kakasi installation is successed."
-  puts "expect path: #{File.absolute_path('../vendor/bin/kakasi')}"
+  puts "expect path: #{kakasi_path}"
   exit 1
 end
 
