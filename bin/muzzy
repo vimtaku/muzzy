@@ -3,7 +3,20 @@
 require 'rubygems'
 require 'optparse'
 require 'csv'
-Version = "1.0.0"
+require 'open3'
+require_relative '../lib/muzzy'
+
+Version = Muzzy::VERSION
+
+## check environments
+kakasi_path = File.absolute_path(File.expand_path('..', __FILE__) + "/../vendor/bin/kakasi")
+unless File.exists?(kakasi_path)
+  puts "cannot find kakasi. please check kakasi installation is successed."
+  puts "expect path: #{kakasi_path}"
+  puts "if you not execute bin/setup, please run `bin/setup` first."
+  exit 1
+end
+
 
 options = {
   file: '',
@@ -21,24 +34,42 @@ if mysql_cmd == ''
   exit 1
 end
 
+mysqlimport_cmd = `which mysqlimport`.to_s.chomp
+if mysqlimport_cmd == ''
+  puts "cannot find mysqlimport command"
+  exit 1
+end
+
+def check_file(file)
+  if File.directory?(file)
+    puts "muzzy: #{file}: is directory"
+    exit Errno::ENOENT::Errno
+  end
+  unless File.exists?(file)
+    puts "muzzy: #{file}: No such file or directory"
+    exit Errno::ENOENT::Errno
+  end
+end
+
 ARGV.options do |opt|
+  opt.banner = "Usage: muzzy [filepath] [options]"
   begin
     opt.on('-u', "--user [USER]", String, 'mysql user') {|user|
       options[:mysql_config][:user] = user
     }
     opt.on('-h [HOST]', 'mysql host') {|v| options[:mysql_config][:host] = v }
     opt.on('-p [PASSWORD]', 'mysql password') {|v| options[:mysql_config][:password] = v }
-    opt.on('-f', '--file [FILEPATH]', 'path to target file') {|v|
-      if File.directory?(v)
-        puts "muzzy: #{v}: is directory"
-        exit Errno::ENOENT::Errno
-      end
-      unless File.exists?(v)
-        puts "muzzy: #{v}: No such file or directory"
-        exit Errno::ENOENT::Errno
-      end
-      options[:file] = v
-    }
+
+    if ARGV[0].to_s.length > 0 && ARGV[0].to_s[0] != '-'
+      check_file(ARGV[0])
+      options[:file] = ARGV[0]
+    else
+      opt.on('-f', '--file [FILEPATH]', 'path to target file') {|v|
+        check_file(v)
+        options[:file] = v
+      }
+    end
+
     opt.on('-v', '--version') {
       puts opt.ver
       exit
@@ -56,30 +87,26 @@ ARGV.options do |opt|
   end
 end
 
+if options[:mysql_config][:database] !~ /\A(\w)+\z/
+  puts "illegal database"
+  exit 1
+end
+
 # confirm database
-cmd = "#{mysql_cmd} -u #{options[:mysql_config][:user]} -h #{options[:mysql_config][:host]}"
-confirm_database_res = `#{cmd} -e "SHOW DATABASES LIKE '#{options[:mysql_config][:database]}'"`
+mysql_cmd_list = [mysql_cmd, '-u', options[:mysql_config][:user], '-h', options[:mysql_config][:host]]
+confirm_database_cmd_list = mysql_cmd_list + ['-e', '"' + "SHOW DATABASES LIKE '#{options[:mysql_config][:database]}'" + '"']
+confirm_database_res = `#{confirm_database_cmd_list.join(' ')}`.chomp
 if confirm_database_res == ''
   puts "creating database #{options[:mysql_config][:database]}"
-  create_database_res = `#{cmd} -e "CREATE DATABASE #{options[:mysql_config][:database]}"`
+  system(*mysql_cmd_list, '-e', "CREATE DATABASE #{options[:mysql_config][:database]}")
   if $? == 0
     puts "creating database #{options[:mysql_config][:database]} done"
   end
 end
 
-kakasi_path = File.absolute_path(File.expand_path('..', __FILE__) + "/../vendor/bin/kakasi")
-
-unless File.exists?(kakasi_path)
-  puts "cannot find kakasi. please check kakasi installation is successed."
-  puts "expect path: #{kakasi_path}"
-  exit 1
-end
-
-
 def fetch_header_and_first_row(filepath, col_sep)
   i = 0
-  header_row = nil
-  first_row = nil
+  header_row, first_row = nil, nil
   CSV.foreach(filepath, col_sep: col_sep) do |row|
     if i == 0
       header_row = row
@@ -99,6 +126,19 @@ end
 header_row = []
 first_row = [] # first row means first data row
 fields_terminated_by = ","
+fields_enclosed_by = ''
+
+File.open(options[:file], mode="rt") do |f|
+  f.each_char do |c|
+    if c == '"'
+      fields_enclosed_by = '"'
+    end
+    break
+  end
+end
+p "fields_enclosed_by"
+p fields_enclosed_by
+
 if options[:file] =~ /\.tsv\z/
   # tsv
   header_row, first_row = fetch_header_and_first_row(options[:file], "\t")
@@ -146,9 +186,7 @@ else
   # cannot judge header is header or not
   puts "header row is"
   puts header_row.join(',')
-  puts "first row is"
-  puts first_row.join(',')
-  puts "header row is header?(not data, right?)"
+  puts "header row is HEADER? [y/n]"
   loop do
     y_or_n = gets.to_s.chomp
     if y_or_n.match(/\A[Yy]\z/)
@@ -165,18 +203,19 @@ end
 
 if header_row_is_header
   header_row = header_row.map do |str|
-    `echo #{str} | #{kakasi_path} -Ja -Ha -Ka -Ea -i utf8 -o utf8`.to_s.chomp
-  end
+    std_out = Open3.capture2('echo', str)[0]
+    Open3.capture2(kakasi_path, '-Ja', '-Ha', '-Ka', '-Ea', '-i', 'utf8', '-o', 'utf8', stdin_data: std_out)[0]
+  end.map(&:chomp)
 end
 
 Cell = Struct.new(:type, :name)
 if header_row_is_header
-  row_data_types = header_row.map do |str|
+  row_data_types = first_row.map.with_index do |str, i|
     if str.match(/\A[\d,]+\z/)
       # number
-      Cell.new('integer', str)
+      Cell.new('integer', header_row[i])
     else
-      Cell.new('text', str)
+      Cell.new('text', header_row[i])
     end
   end
 else
@@ -192,16 +231,25 @@ else
 end
 
 filename = File.basename(options[:file])
-table_name = filename.match(/([^.]+)(\.\w+)?/)[1]
+table_name = filename.match(/\A(\w+)(\.\w+)?\z/)[1]
 
-create_table_sql = "CREATE TABLE #{table_name} (#{row_data_types.map{|x| "#{x.name} #{x.type}"}.join(',')})"
+create_table_sql = "CREATE TABLE #{table_name} (#{row_data_types.map{|x| "#{x.name} #{x.type}"}.join(', ')})"
 
-confirm_table_res = `#{cmd} #{options[:mysql_config][:database]} -e "SHOW CREATE TABLE #{table_name}" 2>&1`
+confirm_table_cmd = mysql_cmd_list + [options[:mysql_config][:database], '-e', "\"SHOW CREATE TABLE #{table_name}\"", '2>&1']
+confirm_table_res = `#{confirm_table_cmd.join(' ')}`
 if confirm_table_res.to_s.match(/\AERROR 1146/)
-  create_table_cmd = "#{mysql_cmd} -u #{options[:mysql_config][:user]} -h #{options[:mysql_config][:host]}"
-  create_table_res = `#{create_table_cmd} #{options[:mysql_config][:database]} -e "#{create_table_sql}"`
+  list = mysql_cmd_list + [options[:mysql_config][:database], '-e', '"', "#{create_table_sql}", '"']
+  `#{list.join(' ')}`
 end
 
-mysql_import_command = "mysqlimport -u #{options[:mysql_config][:user]} -h #{options[:mysql_config][:host]} #{options[:mysql_config][:database]} --local #{options[:file]} --fields_terminated_by='#{fields_terminated_by}' --ignore-lines=#{header_row_is_header ? 1 : 0}"
-`#{mysql_import_command}`
+mysql_import_command = system(
+  mysqlimport_cmd,
+  '-u', options[:mysql_config][:user],
+  '-h', options[:mysql_config][:host],
+  options[:mysql_config][:database],
+  '--local', options[:file],
+  "--fields_terminated_by=#{fields_terminated_by}",
+  "--ignore-lines=#{header_row_is_header ? 1 : 0}",
+  fields_enclosed_by == '' ? '' : "--fields-enclosed-by=#{fields_enclosed_by}"
+)
 
