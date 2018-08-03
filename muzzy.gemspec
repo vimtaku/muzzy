@@ -13,6 +13,7 @@ Gem::Specification.new do |spec|
   spec.description   = %q{muzzy is tsv importer mysql client}
   spec.homepage      = "https://github.com/vimtaku/muzzy"
   spec.license       = "MIT"
+  spec.post_install_message = "Thanks for download muzzy! please run muzzy_setup command first."
 
   if spec.respond_to?(:metadata)
     spec.metadata["allowed_push_host"] = "https://rubygems.org"
