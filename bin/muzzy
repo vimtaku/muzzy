@@ -25,7 +25,7 @@ options = {
     host: 'localhost',
     password: '',
     database: 'muzzy',
-  }
+  },
 }
 
 mysql_cmd = `which mysql`.to_s.chomp
@@ -186,7 +186,7 @@ else
   puts header_row.join(',')
   puts "header row is HEADER? [y/n]"
   loop do
-    y_or_n = gets.to_s.chomp
+    y_or_n = $stdin.gets.to_s.chomp
     if y_or_n.match(/\A[Yy]\z/)
       header_row_is_header = true
       break
@@ -203,7 +203,10 @@ if header_row_is_header
   header_row = header_row.map do |str|
     std_out = Open3.capture2('echo', str)[0]
     Open3.capture2(kakasi_path, '-Ja', '-Ha', '-Ka', '-Ea', '-i', 'utf8', '-o', 'utf8', stdin_data: std_out)[0]
-  end.map(&:chomp)
+  end.map(&:chomp).map do |x|
+    # kakasi returns ko^do if 'コード' given so trimming
+    x.gsub(/[\^]/, '')
+  end
 end
 
 Cell = Struct.new(:type, :name)
@@ -240,14 +243,18 @@ if confirm_table_res.to_s.match(/\AERROR 1146/)
   `#{list.join(' ')}`
 end
 
-mysql_import_command = system(
+cmds = [
   mysqlimport_cmd,
   '-u', options[:mysql_config][:user],
   '-h', options[:mysql_config][:host],
   options[:mysql_config][:database],
-  '--local', options[:file],
+  '--local', filename,
   "--fields_terminated_by=#{fields_terminated_by}",
   "--ignore-lines=#{header_row_is_header ? 1 : 0}",
-  fields_enclosed_by == '' ? '' : "--fields-enclosed-by=#{fields_enclosed_by}"
-)
-
+]
+if fields_enclosed_by != ''
+  cmds.push(fields_enclosed_by)
+end
+# mysqlimport data
+system(*cmds)
+exit 0
