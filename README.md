@@ -41,9 +41,12 @@ You have users.tsv and content is bellow.
 ```
 
 Therefore, you want to query users gender is '男', you can do as below.
+
+```
 $ muzzy users.tsv
 $ mysql -u root muzzy
 mysql> show create table users;
+```
 
 ```
 +--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
