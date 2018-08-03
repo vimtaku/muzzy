@@ -136,8 +136,6 @@ File.open(options[:file], mode="rt") do |f|
     break
   end
 end
-p "fields_enclosed_by"
-p fields_enclosed_by
 
 if options[:file] =~ /\.tsv\z/
   # tsv
