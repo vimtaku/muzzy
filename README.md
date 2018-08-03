@@ -13,9 +13,11 @@ and run bin/setup
 
 ## Usage
 
-$ muzzy [filename]
+`$ muzzy [filename]`
+
 or
-$ muzzy -f filename
+
+`$ muzzy -f filename`
 
 
 ## Examples
