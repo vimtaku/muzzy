@@ -3,13 +3,13 @@ Muzzy is mysql fuzzy importer for lazy (mainly japanese) people.
 
 mysqlimport option is complex, just want to query tsv, csv on mysql client.
 
-TSV or CSV query program are exist(textql, q, and something like that), but I wan't to use mysql client.
+TSV or CSV query program are exist(textql, q, and something like that), but I wanna use mysql client.
 
 ## Installation
 
-$ gem install muzzy
+`$ gem install muzzy`
 
-and run bin/setup
+and run muzzy_setup
 
 ## Usage
 
@@ -95,12 +95,25 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/muzzy. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [Contributor Covenant](http://contributor-covenant.org) code of conduct.
+Bug reports and pull requests are welcome on GitHub at https://github.com/vimtaku/muzzy. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [Contributor Covenant](http://contributor-covenant.org) code of conduct.
 
 ## License
 
-The gem is available as open source under the terms of the [MIT License](http://opensource.org/licenses/MIT).
+This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+see also [https://github.com/vimtaku/muzzy/blob/master/LICENSE.txt](LICENSE.txt)
 
 ## Code of Conduct
 
-Everyone interacting in the Muzzy project’s codebases, issue trackers, chat rooms and mailing lists is expected to follow the [code of conduct](https://github.com/[USERNAME]/muzzy/blob/master/CODE_OF_CONDUCT.md).
+Everyone interacting in the Muzzy project’s codebases, issue trackers, chat rooms and mailing lists is expected to follow the [code of conduct](https://github.com/vimtaku/muzzy/blob/master/CODE_OF_CONDUCT.md).
