@@ -13,7 +13,7 @@ kakasi_path = File.absolute_path(File.expand_path('..', __FILE__) + "/../vendor/
 unless File.exists?(kakasi_path)
   puts "cannot find kakasi. please check kakasi installation is successed."
   puts "expect path: #{kakasi_path}"
-  puts "if you not execute bin/setup, please run `bin/setup` first."
+  puts "If you have not execute `muzzy_setup` yet, please run `muzzy_setup` first."
   exit 1
 end
 
