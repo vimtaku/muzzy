@@ -1,8 +1,3 @@
-
-### install kakasi
-cd vendor
-dir=$(cd $(dirname $0); pwd)
-gzip -dc kakasi-2.3.6.tar.gz | tar xvf -
-cd kakasi-2.3.6
-./configure --prefix=$dir
-make && make install
+lib_root_path = File.absolute_path(File.expand_path('.', __FILE__) + "/../../")
+setup_path = "#{lib_root_path}/bin/setup"
+`cd #{lib_root_path} && #{setup_path}`
