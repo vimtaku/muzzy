@@ -2,6 +2,7 @@
 
 require 'rubygems'
 require 'optparse'
+require 'io/console'
 require 'csv'
 require 'open3'
 require_relative '../lib/muzzy'
@@ -20,11 +21,15 @@ end
 
 options = {
   file: '',
+  verbose: false,
   mysql_config: {
     user: 'root',
     host: 'localhost',
-    password: '',
+    use_password: false,
     database: 'muzzy',
+  },
+  mysqlimport_config: {
+    delete: false
   },
 }
 
@@ -58,7 +63,15 @@ ARGV.options do |opt|
       options[:mysql_config][:user] = user
     }
     opt.on('-h [HOST]', 'mysql host') {|v| options[:mysql_config][:host] = v }
-    opt.on('-p [PASSWORD]', 'mysql password') {|v| options[:mysql_config][:password] = v }
+    opt.on('-p', 'using mysql password') {|v|
+      options[:mysql_config][:use_password] = v
+    }
+    opt.on('-V', '--verbose', 'verbose option') {
+      options[:verbose] = true
+    }
+    opt.on('-r', 'remove data and insert it') {
+      options[:mysqlimport_config][:delete] = true
+    }
 
     if ARGV[0].to_s.length > 0 && ARGV[0].to_s[0] != '-'
       check_file(ARGV[0])
@@ -94,7 +107,15 @@ end
 
 # confirm database
 mysql_cmd_list = [mysql_cmd, '-u', options[:mysql_config][:user], '-h', options[:mysql_config][:host]]
+if options[:mysql_config][:use_password]
+  mysql_cmd_list.push('-p')
+end
+
 confirm_database_cmd_list = mysql_cmd_list + ['-e', '"' + "SHOW DATABASES LIKE '#{options[:mysql_config][:database]}'" + '"']
+if options[:verbose]
+  puts confirm_database_cmd_list.join(' ')
+end
+
 confirm_database_res = `#{confirm_database_cmd_list.join(' ')}`.chomp
 if confirm_database_res == ''
   puts "creating database #{options[:mysql_config][:database]}"
@@ -237,24 +258,41 @@ table_name = filename.match(/\A(\w+)(\.\w+)?\z/)[1]
 create_table_sql = "CREATE TABLE #{table_name} (#{row_data_types.map{|x| "#{x.name} #{x.type}"}.join(', ')})"
 
 confirm_table_cmd = mysql_cmd_list + [options[:mysql_config][:database], '-e', "\"SHOW CREATE TABLE #{table_name}\"", '2>&1']
+if options[:verbose]
+  puts confirm_table_cmd.join(' ')
+end
+
 confirm_table_res = `#{confirm_table_cmd.join(' ')}`
 if confirm_table_res.to_s.match(/\AERROR 1146/)
-  list = mysql_cmd_list + [options[:mysql_config][:database], '-e', '"', "#{create_table_sql}", '"']
-  `#{list.join(' ')}`
+  create_database_cmd_list = mysql_cmd_list + [options[:mysql_config][:database], '-e', '"', "#{create_table_sql}", '"']
+  if options[:verbose]
+    puts create_database_cmd_list.join(' ')
+  end
+  `#{create_database_cmd_list.join(' ')}`
 end
 
 cmds = [
   mysqlimport_cmd,
   '-u', options[:mysql_config][:user],
   '-h', options[:mysql_config][:host],
+  "#{options[:mysql_config][:use_password] ? '-p' : ''}",
   options[:mysql_config][:database],
-  '--local', filename,
+  '--local', options[:file],
   "--fields_terminated_by=#{fields_terminated_by}",
   "--ignore-lines=#{header_row_is_header ? 1 : 0}",
 ]
+if options[:mysqlimport_config][:delete]
+  cmds.push('--delete')
+end
+
 if fields_enclosed_by != ''
   cmds.push(fields_enclosed_by)
 end
+
+if options[:verbose]
+  puts cmds.join(' ')
+end
+
 # mysqlimport data
 system(*cmds)
 exit 0
