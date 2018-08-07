@@ -289,7 +289,7 @@ if options[:mysqlimport_config][:delete]
   cmds.push('--delete')
 end
 if fields_enclosed_by != ''
-  cmds.push(fields_enclosed_by)
+  cmds.push("--fields_enclosed_by=#{fields_enclosed_by}")
 end
 
 if options[:verbose]
