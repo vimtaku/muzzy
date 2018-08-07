@@ -198,6 +198,8 @@ if header_row.any?{|str| str.match(/_id/) }
   header_row_is_header = true
 elsif header_row.any?{|str| str.match(/NULL/) }
   header_row_is_header = false
+elsif header_row.any?{|str| str.nil? || str == '' }
+  header_row_is_header = false
 elsif header_row.map(&:to_i).select{|x| x <= 0}.count != first_row.map(&:to_i).select{|x| x <= 0}.count
   # i guess number col count is different, header_row is header.
   header_row_is_header = true
@@ -243,7 +245,7 @@ if header_row_is_header
 else
   # header row is data
   row_data_types = header_row.map.with_index do |str, i|
-    if str.match(/\A[\d,]+\z/)
+    if str.to_s.match(/\A[\d,]+\z/)
       # number
       Cell.new('integer', "col#{i}")
     else
