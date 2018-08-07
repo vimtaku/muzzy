@@ -9,7 +9,9 @@ TSV or CSV query program are exist(textql, q, and something like that), but I wa
 
 `$ gem install muzzy`
 
-and run muzzy_setup
+and run
+
+`$ muzzy_setup`
 
 ## Usage
 
