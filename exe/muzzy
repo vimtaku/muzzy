@@ -271,20 +271,23 @@ if confirm_table_res.to_s.match(/\AERROR 1146/)
   `#{create_database_cmd_list.join(' ')}`
 end
 
+mysql_options = ['-u', options[:mysql_config][:user], '-h', options[:mysql_config][:host]]
+if options[:mysql_config][:use_password]
+  mysql_options.push('-p')
+end
 cmds = [
   mysqlimport_cmd,
-  '-u', options[:mysql_config][:user],
-  '-h', options[:mysql_config][:host],
-  "#{options[:mysql_config][:use_password] ? '-p' : ''}",
+  *mysql_options,
   options[:mysql_config][:database],
   '--local', options[:file],
-  "--fields_terminated_by=#{fields_terminated_by}",
   "--ignore-lines=#{header_row_is_header ? 1 : 0}",
 ]
+if fields_terminated_by
+  cmds.push("--fields_terminated_by=#{fields_terminated_by}")
+end
 if options[:mysqlimport_config][:delete]
   cmds.push('--delete')
 end
-
 if fields_enclosed_by != ''
   cmds.push(fields_enclosed_by)
 end
