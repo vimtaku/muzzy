@@ -56,6 +56,7 @@ def check_file(file)
   end
 end
 
+## parse arguments
 ARGV.options do |opt|
   opt.banner = "Usage: muzzy [filepath] [options]"
   begin
@@ -105,7 +106,7 @@ if options[:mysql_config][:database] !~ /\A(\w)+\z/
   exit 1
 end
 
-# confirm database
+## confirm database, if not, create it.
 mysql_cmd_list = [mysql_cmd, '-u', options[:mysql_config][:user], '-h', options[:mysql_config][:host]]
 if options[:mysql_config][:use_password]
   mysql_cmd_list.push('-p')
@@ -125,71 +126,60 @@ if confirm_database_res == ''
   end
 end
 
-def fetch_header_and_first_row(filepath, col_sep)
-  i = 0
-  header_row, first_row = nil, nil
-  CSV.foreach(filepath, col_sep: col_sep) do |row|
-    if i == 0
-      header_row = row
-    elsif i == 1
-      first_row = row
-    else
-      break
-    end
-    i += 1
-  end
-  return [header_row, first_row]
-end
-
-
 ## get first and second rows
-
 header_row = []
 first_row = [] # first row means first data row
 fields_terminated_by = ","
-fields_enclosed_by = ''
 
-File.open(options[:file], mode="rt") do |f|
-  f.each_char do |c|
-    if c == '"'
-      fields_enclosed_by = '"'
-    end
-    break
-  end
-end
 
 if options[:file] =~ /\.tsv\z/
   # tsv
-  header_row, first_row = fetch_header_and_first_row(options[:file], "\t")
+  header_row, first_row = Muzzy::Util.fetch_header_and_first_row(options[:file], "\t")
   fields_terminated_by = "\t"
 else
   # csv(,) or csv(\t) or something
 
   # trying to csv
-  csv_header_row, csv_first_row = fetch_header_and_first_row(options[:file], ",")
+  csv_header_row, csv_first_row = Muzzy::Util.fetch_header_and_first_row(options[:file], ",")
   # trying to tsv
-  tsv_header_row, tsv_first_row = fetch_header_and_first_row(options[:file], "\t")
+  tsv_header_row, tsv_first_row = Muzzy::Util.fetch_header_and_first_row(options[:file], "\t")
 
-  if csv_header_row.length == tsv_header_row.length
-    if csv_header_row.length == 1 && tsv_first_row.length == 1
-      # single col file
-      header_row, first_row = csv_header_row, csv_first_row
-    else
-      puts "illegal file"
-      exit 1
-    end
+  if csv_header_row == -1 && tsv_header_row == -1
+    puts "illegal csv file."
+    exit 1
   end
 
-  if csv_header_row.length > tsv_header_row.length
-    # csv
-    header_row, first_row = csv_header_row, csv_first_row
+  if csv_header_row == -1 || tsv_header_row == -1
+    if csv_header_row == -1
+      # tsv
+      header_row, first_row = tsv_header_row, tsv_first_row
+      fields_terminated_by = "\t"
+    else
+      # csv
+      header_row, first_row = csv_header_row, csv_first_row
+    end
   else
-    # tsv
-    header_row, first_row = tsv_header_row, tsv_first_row
-    fields_terminated_by = "\t"
+    if csv_header_row.length > tsv_header_row.length
+      # csv
+      header_row, first_row = csv_header_row, csv_first_row
+    else
+      # tsv
+      header_row, first_row = tsv_header_row, tsv_first_row
+      fields_terminated_by = "\t"
+    end
+    if csv_header_row.length == tsv_header_row.length
+      if csv_header_row.length == 1 && tsv_first_row.length == 1
+        # single col file
+        header_row, first_row = csv_header_row, csv_first_row
+      else
+        puts "illegal file"
+        exit 1
+      end
+    end
   end
 end
 header_row = header_row.map(&:to_s)
+
 
 # guess header_row is data row or not
 header_row_is_header = nil
@@ -235,7 +225,7 @@ end
 Cell = Struct.new(:type, :name)
 if header_row_is_header
   row_data_types = first_row.map.with_index do |str, i|
-    if str.match(/\A[\d,]+\z/)
+    if str.to_s.match(/\A[\d,]+\z/)
       # number
       Cell.new('integer', header_row[i])
     else
@@ -290,9 +280,7 @@ end
 if options[:mysqlimport_config][:delete]
   cmds.push('--delete')
 end
-if fields_enclosed_by != ''
-  cmds.push("--fields_enclosed_by=#{fields_enclosed_by}")
-end
+cmds.push('--fields_enclosed_by="')
 
 if options[:verbose]
   puts cmds.join(' ')

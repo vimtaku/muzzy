@@ -21,10 +21,53 @@ or
 
 `$ muzzy -f filename`
 
-
 ## Examples
 
-### Case 1, You have Japanese tsv file
+### Case 1, trying tsv file.
+
+#### ok, Let's execute muzzy.
+
+```
+$ muzzy spec/fixtures/partial_surround_double_quote.tsv
+$ mysql -u root muzzy
+mysql> show create table partial_surround_double_quote;
+```
+
+```
++-------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Table                         | Create Table                                                                                                                                                                                                                                                                                                                                                                               |
++-------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| partial_surround_double_quote | CREATE TABLE `partial_surround_double_quote` (
+  `PassengerId` int(11) DEFAULT NULL,
+  `Survived` int(11) DEFAULT NULL,
+  `Pclass` int(11) DEFAULT NULL,
+  `Name` text,
+  `Sex` text,
+  `Age` int(11) DEFAULT NULL,
+  `SibSp` int(11) DEFAULT NULL,
+  `Parch` int(11) DEFAULT NULL,
+  `Ticket` text,
+  `Fare` text,
+  `Cabin` text,
+  `Embarked` text
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 |
++-------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+1 row in set (0.00 sec)
+```
+
+```
+mysql> select * from partial_surround_double_quote limit 3;
++-------------+----------+--------+-----------------------------------------------------+--------+------+-------+-------+------------------+---------+-------+----------+
+| PassengerId | Survived | Pclass | Name                                                | Sex    | Age  | SibSp | Parch | Ticket           | Fare    | Cabin | Embarked |
++-------------+----------+--------+-----------------------------------------------------+--------+------+-------+-------+------------------+---------+-------+----------+
+       |    1 |        0 |      3 | Braund	 Mr. Owen Harris                             | male   |   22 |     1 |     0 | A/5 21171        | 7.25    |       | S
+       |    2 |        1 |      1 | Cumings	 Mrs. John Bradley (Florence Briggs Thayer) | female |   38 |     1 |     0 | PC 17599         | 71.2833 | C85   | C
+       |    3 |        1 |      3 | Heikkinen	 Miss. Laina                              | female |   26 |     0 |     0 | STON/O2. 3101282 | 7.925   |       | S
++-------------+----------+--------+-----------------------------------------------------+--------+------+-------+-------+------------------+---------+-------+----------+
+3 rows in set (0.00 sec)
+```
+
+### Case 2, You have Japanese tsv file
 
 You have users.tsv and content is bellow.
 
@@ -85,6 +128,10 @@ mysql> select * from sample where seibetsu  = '男';
 ```
 
 Thats, it.
+
+## Do you want to test now?
+https://raw.githubusercontent.com/rebeccabilbro/titanic/master/data/train.csv
+
 
 ## Dependency
 muzzy uses [kakasi](http://kakasi.namazu.org/index.html.ja) for create table column name.
