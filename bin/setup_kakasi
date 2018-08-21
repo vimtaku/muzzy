@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
+set -vx
+
+### install kakasi
+cd vendor
+dir=`ruby -e 'puts Dir.pwd'`
+gzip -dc kakasi-2.3.6.tar.gz | tar xvf -
+cd kakasi-2.3.6
+./configure --prefix=$dir
+make && make install
