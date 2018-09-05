@@ -12,9 +12,19 @@ Version = Muzzy::VERSION
 ## check environments
 kakasi_path = File.absolute_path(File.expand_path('..', __FILE__) + "/../vendor/bin/kakasi")
 unless File.exists?(kakasi_path)
-  puts "cannot find kakasi. please check kakasi installation is successed."
-  puts "expect path: #{kakasi_path}"
-  puts "If you have not execute `muzzy_setup` yet, please run `muzzy_setup` first."
+  $stderr.puts "cannot find kakasi. please check kakasi installation is successed."
+  $stderr.puts "expect path: #{kakasi_path}"
+  $stderr.puts "If you have not execute `muzzy_setup` yet, please run `muzzy_setup` first."
+  exit 1
+end
+mysql_cmd = `which mysql`.to_s.chomp
+if mysql_cmd == ''
+  $stderr.puts "cannot find mysql client"
+  exit 1
+end
+mysqlimport_cmd = `which mysqlimport`.to_s.chomp
+if mysqlimport_cmd == ''
+  $stderr.puts "cannot find mysqlimport command"
   exit 1
 end
 
@@ -33,25 +43,13 @@ options = {
   },
 }
 
-mysql_cmd = `which mysql`.to_s.chomp
-if mysql_cmd == ''
-  puts "cannot find mysql client"
-  exit 1
-end
-
-mysqlimport_cmd = `which mysqlimport`.to_s.chomp
-if mysqlimport_cmd == ''
-  puts "cannot find mysqlimport command"
-  exit 1
-end
-
 def check_file(file)
   if File.directory?(file)
-    puts "muzzy: #{file}: is directory"
+    $stderr.puts "muzzy: #{file}: is directory"
     exit Errno::ENOENT::Errno
   end
   unless File.exists?(file)
-    puts "muzzy: #{file}: No such file or directory"
+    $stderr.puts "muzzy: #{file}: No such file or directory"
     exit Errno::ENOENT::Errno
   end
 end
@@ -75,24 +73,23 @@ ARGV.options do |opt|
     }
 
     if ARGV[0].to_s.length > 0 && ARGV[0].to_s[0] != '-'
-      check_file(ARGV[0])
       options[:file] = ARGV[0]
+    elsif ARGV.last.to_s.length > 0 && ARGV.last.to_s[0] != '-'
+      options[:file] = ARGV.last
     else
-      opt.on('-f', '--file [FILEPATH]', 'path to target file') {|v|
-        check_file(v)
-        options[:file] = v
-      }
+      opt.on('-f', '--file [FILEPATH]', 'path to target file') {|v| options[:file] = v }
     end
+    check_file(options[:file])
 
     opt.on('-v', '--version') {
-      puts opt.ver
+      $stdout.puts opt.ver
       exit
     }
 
     opt.parse!
 
     if options[:file].nil? || options[:file] == ''
-      puts opt.help
+      $stdout.puts opt.help
       exit 1
     end
   rescue => e
@@ -102,118 +99,44 @@ ARGV.options do |opt|
 end
 
 if options[:mysql_config][:database] !~ /\A(\w)+\z/
-  puts "illegal database"
+  $stderr.puts "illegal database name"
   exit 1
 end
 
-## confirm database, if not, create it.
-mysql_cmd_list = [mysql_cmd, '-u', options[:mysql_config][:user], '-h', options[:mysql_config][:host]]
-if options[:mysql_config][:use_password]
-  mysql_cmd_list.push('-p')
+filetype_detector = Muzzy::FiletypeDetector.new(options[:file])
+if filetype_detector.unknown?
+  $stderr.puts "illegal file"
+  exit 1
 end
 
-confirm_database_cmd_list = mysql_cmd_list + ['-e', '"' + "SHOW DATABASES LIKE '#{options[:mysql_config][:database]}'" + '"']
-if options[:verbose]
-  puts confirm_database_cmd_list.join(' ')
-end
+first_row = filetype_detector.first_row
+second_row = filetype_detector.second_row
+fields_terminated_by = filetype_detector.tsv? ? "\t" : ','
 
-confirm_database_res = `#{confirm_database_cmd_list.join(' ')}`.chomp
-if confirm_database_res == ''
-  puts "creating database #{options[:mysql_config][:database]}"
-  system(*mysql_cmd_list, '-e', "CREATE DATABASE #{options[:mysql_config][:database]}")
-  if $? == 0
-    puts "creating database #{options[:mysql_config][:database]} done"
-  end
-end
-
-## get first and second rows
-header_row = []
-first_row = [] # first row means first data row
-fields_terminated_by = ","
-
-
-if options[:file] =~ /\.tsv\z/
-  # tsv
-  header_row, first_row = Muzzy::Util.fetch_header_and_first_row(options[:file], "\t")
-  fields_terminated_by = "\t"
-else
-  # csv(,) or csv(\t) or something
-
-  # trying to csv
-  csv_header_row, csv_first_row = Muzzy::Util.fetch_header_and_first_row(options[:file], ",")
-  # trying to tsv
-  tsv_header_row, tsv_first_row = Muzzy::Util.fetch_header_and_first_row(options[:file], "\t")
-
-  if csv_header_row == -1 && tsv_header_row == -1
-    puts "illegal csv file."
-    exit 1
-  end
-
-  if csv_header_row == -1 || tsv_header_row == -1
-    if csv_header_row == -1
-      # tsv
-      header_row, first_row = tsv_header_row, tsv_first_row
-      fields_terminated_by = "\t"
-    else
-      # csv
-      header_row, first_row = csv_header_row, csv_first_row
-    end
-  else
-    if csv_header_row.length > tsv_header_row.length
-      # csv
-      header_row, first_row = csv_header_row, csv_first_row
-    else
-      # tsv
-      header_row, first_row = tsv_header_row, tsv_first_row
-      fields_terminated_by = "\t"
-    end
-    if csv_header_row.length == tsv_header_row.length
-      if csv_header_row.length == 1 && tsv_first_row.length == 1
-        # single col file
-        header_row, first_row = csv_header_row, csv_first_row
-      else
-        puts "illegal file"
-        exit 1
-      end
-    end
-  end
-end
-header_row = header_row.map(&:to_s)
-
-
-# guess header_row is data row or not
-header_row_is_header = nil
-
-if header_row.any?{|str| str.match(/_id/) }
-  header_row_is_header = true
-elsif header_row.any?{|str| str.match(/NULL/) }
-  header_row_is_header = false
-elsif header_row.any?{|str| str.nil? || str == '' }
-  header_row_is_header = false
-elsif header_row.map(&:to_i).select{|x| x <= 0}.count != first_row.map(&:to_i).select{|x| x <= 0}.count
-  # i guess number col count is different, header_row is header.
-  header_row_is_header = true
-else
+# detect first_row is header or data row
+first_row_is_header = Muzzy::HeaderDetector.detect([first_row, second_row])
+if first_row_is_header == nil
   # cannot judge header is header or not
-  puts "header row is"
-  puts header_row.join(',')
-  puts "header row is HEADER? [y/n]"
+  puts "first row is"
+  puts first_row.join(',')
+  puts "first row is HEADER? [y/n]"
   loop do
     y_or_n = $stdin.gets.to_s.chomp
     if y_or_n.match(/\A[Yy]\z/)
-      header_row_is_header = true
+      first_row_is_header = true
       break
     end
     if y_or_n.match(/\A[Nn]\z/)
-      header_row_is_header = false
+      first_row_is_header = false
       break
     end
     puts "plase enter y or n"
   end
 end
 
-if header_row_is_header
-  header_row = header_row.map do |str|
+
+if first_row_is_header
+  first_row = first_row.map do |str|
     std_out = Open3.capture2('echo', str)[0]
     Open3.capture2(kakasi_path, '-Ja', '-Ha', '-Ka', '-Ea', '-i', 'utf8', '-o', 'utf8', stdin_data: std_out)[0]
   end.map(&:chomp).map do |x|
@@ -222,19 +145,35 @@ if header_row_is_header
   end
 end
 
+# TODO ヘッダが空白含んでたりするやつとかをなんとかする
+col_data_types = []
 Cell = Struct.new(:type, :name)
-if header_row_is_header
-  row_data_types = first_row.map.with_index do |str, i|
-    if str.to_s.match(/\A[\d,]+\z/)
-      # number
-      Cell.new('integer', header_row[i])
-    else
-      Cell.new('text', header_row[i])
+if first_row_is_header
+  if first_row
+    col_data_types = first_row.map.with_index do |str, i|
+      if str.to_s.match(/\A[\d,]+\z/)
+        # number
+        Cell.new('integer', first_row[i])
+      else
+        Cell.new('text', first_row[i])
+      end
+    end
+  else
+    col_data_types = first_row.map.with_index do |str, i|
+      colname = first_row[i].gsub(/[,-]/, '')
+      if str.to_s.match(/_id/i) && str.to_s.match(/\A[\w]+\z/i)
+        # number
+        Cell.new('integer', colname)
+      else
+        Cell.new('text', colname)
+      end
     end
   end
 else
-  # header row is data
-  row_data_types = header_row.map.with_index do |str, i|
+  # TODO not create table option
+
+  # first row is data(not header)
+  col_data_types = first_row.map.with_index do |str, i|
     if str.to_s.match(/\A[\d,]+\z/)
       # number
       Cell.new('integer', "col#{i}")
@@ -244,48 +183,45 @@ else
   end
 end
 
+config = {
+  filepath: options[:file],
+  cmd_path: mysql_cmd,
+  mysqlimport_path: mysqlimport_cmd,
+  user: options[:mysql_config][:user],
+  host: options[:mysql_config][:host],
+  # password: options[:mysql_config][:password],
+  use_password: options[:mysql_config][:use_password],
+  database_name: options[:mysql_config][:database],
+}
+
+db_adapter = Muzzy::DatabaseAdapter::MysqlAdapter.new(
+  config,
+  verbose: options[:verbose]
+)
+unless db_adapter.confirm_database
+  unless db_adapter.create_database
+    # database create failed
+    exit 1
+  end
+end
+
 filename = File.basename(options[:file])
 table_name = filename.match(/\A(\w+)(\.\w+)?\z/)[1]
 
-create_table_sql = "CREATE TABLE #{table_name} (#{row_data_types.map{|x| "#{x.name} #{x.type}"}.join(', ')})"
-
-confirm_table_cmd = mysql_cmd_list + [options[:mysql_config][:database], '-e', "\"SHOW CREATE TABLE #{table_name}\"", '2>&1']
-if options[:verbose]
-  puts confirm_table_cmd.join(' ')
-end
-
-confirm_table_res = `#{confirm_table_cmd.join(' ')}`
-if confirm_table_res.to_s.match(/\AERROR 1146/)
-  create_database_cmd_list = mysql_cmd_list + [options[:mysql_config][:database], '-e', '"', "#{create_table_sql}", '"']
-  if options[:verbose]
-    puts create_database_cmd_list.join(' ')
+# confirm table
+unless db_adapter.confirm_table(table_name)
+  # cannot confirm table so create table
+  unless db_adapter.create_table(table_name, col_data_types)
+    # error, cannot create table
+    exit 1
   end
-  `#{create_database_cmd_list.join(' ')}`
 end
 
-mysql_options = ['-u', options[:mysql_config][:user], '-h', options[:mysql_config][:host]]
-if options[:mysql_config][:use_password]
-  mysql_options.push('-p')
-end
-cmds = [
-  mysqlimport_cmd,
-  *mysql_options,
-  options[:mysql_config][:database],
-  '--local', options[:file],
-  "--ignore-lines=#{header_row_is_header ? 1 : 0}",
-]
-if fields_terminated_by
-  cmds.push("--fields_terminated_by=#{fields_terminated_by}")
-end
-if options[:mysqlimport_config][:delete]
-  cmds.push('--delete')
-end
-cmds.push('--fields_enclosed_by="')
+# import
+db_adapter.import(table_name, {
+  first_row_is_header: first_row_is_header,
+  fields_terminated_by: fields_terminated_by,
+  delete: options[:mysqlimport_config][:delete]
+})
 
-if options[:verbose]
-  puts cmds.join(' ')
-end
-
-# mysqlimport data
-system(*cmds)
 exit 0
