@@ -14,7 +14,7 @@ kakasi_path = File.absolute_path(File.expand_path('..', __FILE__) + "/../vendor/
 unless File.exists?(kakasi_path)
   $stderr.puts "cannot find kakasi. please check kakasi installation is successed."
   $stderr.puts "expect path: #{kakasi_path}"
-  $stderr.puts "If you have not execute `muzzy_setup` yet, please run `muzzy_setup` first."
+  $stderr.puts "If you had not executed `muzzy_setup` yet, please run `muzzy_setup` first."
   exit 1
 end
 mysql_cmd = `which mysql`.to_s.chomp
@@ -79,7 +79,9 @@ ARGV.options do |opt|
     else
       opt.on('-f', '--file [FILEPATH]', 'path to target file') {|v| options[:file] = v }
     end
-    check_file(options[:file])
+    if options[:file].to_s != ''
+      check_file(options[:file])
+    end
 
     opt.on('-v', '--version') {
       $stdout.puts opt.ver
@@ -134,14 +136,15 @@ if first_row_is_header == nil
   end
 end
 
-
+# convert header row to compatible with database table columns
 if first_row_is_header
   first_row = first_row.map do |str|
     std_out = Open3.capture2('echo', str)[0]
     Open3.capture2(kakasi_path, '-Ja', '-Ha', '-Ka', '-Ea', '-i', 'utf8', '-o', 'utf8', stdin_data: std_out)[0]
-  end.map(&:chomp).map do |x|
-    # kakasi returns ko^do if 'コード' given so trimming
-    x.gsub(/[\^]/, '')
+  end.map do |x|
+    # kakasi returns ko^do if 'コード' given so replace it to _
+    # space changes to _
+    x.chomp.strip.gsub(/[\^]/, '_').gsub(/\s/, '_')
   end
 end
 
