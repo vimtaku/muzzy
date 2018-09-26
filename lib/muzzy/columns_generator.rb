@@ -27,22 +27,12 @@ module Muzzy
         end || first_row.dup
 
         columns = coulumn_names.map.with_index do |str, i|
-          # foo_id, bar_id is integer column
-          if str.to_s.match(/_id\z/i)
-            Muzzy::Column.new('integer', coulumn_names[i])
-          else
-            Muzzy::Column.new('text', coulumn_names[i])
-          end
+          Muzzy::Column.new('text', coulumn_names[i])
         end
       else
         # first row is data (not header)
         columns = first_row.map.with_index do |str, i|
-          if str.to_s.match(/\A[\d,]+\z/)
-            # 1000 or 1,000 will be number
-            Muzzy::Column.new('integer', "col#{i}")
-          else
-            Muzzy::Column.new('text', "col#{i}")
-          end
+          Muzzy::Column.new('text', "col#{i}")
         end
       end
       columns
