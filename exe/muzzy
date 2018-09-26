@@ -28,7 +28,6 @@ if mysqlimport_cmd == ''
   exit 1
 end
 
-
 options = {
   file: '',
   verbose: false,
@@ -136,55 +135,8 @@ if first_row_is_header == nil
   end
 end
 
-# convert header row to compatible with database table columns
-if first_row_is_header
-  first_row = first_row.map do |str|
-    std_out = Open3.capture2('echo', str)[0]
-    Open3.capture2(kakasi_path, '-Ja', '-Ha', '-Ka', '-Ea', '-i', 'utf8', '-o', 'utf8', stdin_data: std_out)[0]
-  end.map do |x|
-    # kakasi returns ko^do if 'コード' given so replace it to _
-    # space changes to _
-    x.chomp.strip.gsub(/[\^]/, '_').gsub(/\s/, '_')
-  end
-end
-
-# TODO ヘッダが空白含んでたりするやつとかをなんとかする
-col_data_types = []
-Cell = Struct.new(:type, :name)
-if first_row_is_header
-  if first_row
-    col_data_types = first_row.map.with_index do |str, i|
-      if str.to_s.match(/\A[\d,]+\z/)
-        # number
-        Cell.new('integer', first_row[i])
-      else
-        Cell.new('text', first_row[i])
-      end
-    end
-  else
-    col_data_types = first_row.map.with_index do |str, i|
-      colname = first_row[i].gsub(/[,-]/, '')
-      if str.to_s.match(/_id/i) && str.to_s.match(/\A[\w]+\z/i)
-        # number
-        Cell.new('integer', colname)
-      else
-        Cell.new('text', colname)
-      end
-    end
-  end
-else
-  # TODO not create table option
-
-  # first row is data(not header)
-  col_data_types = first_row.map.with_index do |str, i|
-    if str.to_s.match(/\A[\d,]+\z/)
-      # number
-      Cell.new('integer', "col#{i}")
-    else
-      Cell.new('text', "col#{i}")
-    end
-  end
-end
+column_generator = Muzzy::ColumnsGenerator.new(kakasi_path)
+columns = column_generator.generate(first_row_is_header, first_row)
 
 config = {
   filepath: options[:file],
@@ -197,7 +149,7 @@ config = {
   database_name: options[:mysql_config][:database],
 }
 
-db_adapter = Muzzy::DatabaseAdapter::MysqlAdapter.new(
+db_adapter = Muzzy::DatabaseAdapters::MysqlAdapter.new(
   config,
   verbose: options[:verbose]
 )
@@ -214,7 +166,7 @@ table_name = filename.match(/\A(\w+)(\.\w+)?\z/)[1]
 # confirm table
 unless db_adapter.confirm_table(table_name)
   # cannot confirm table so create table
-  unless db_adapter.create_table(table_name, col_data_types)
+  unless db_adapter.create_table(table_name, columns)
     # error, cannot create table
     exit 1
   end
