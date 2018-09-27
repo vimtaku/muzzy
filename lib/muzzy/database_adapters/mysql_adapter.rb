@@ -1,5 +1,6 @@
+require 'nkf'
 module Muzzy
-  module DatabaseAdapter
+  module DatabaseAdapters
     class MysqlAdapter < AdapterBase
       def initialize(config, verbose: false)
         @filepath = config[:filepath]
@@ -57,8 +58,8 @@ module Muzzy
       end
 
       # [Bool] true: table created, false: some error happened
-      def create_table(table_name, col_data_types)
-        create_table_sql = "CREATE TABLE #{table_name} (#{col_data_types.map{|x| "#{x.name} #{x.type}"}.join(', ')})"
+      def create_table(table_name, columns)
+        create_table_sql = "CREATE TABLE #{table_name} (#{columns.map{|x| "#{x.name} #{x.datatype}"}.join(', ')})"
         create_table_cmd_list = [*mysql_cmd_list, @database_name, '-e', '"', "#{create_table_sql}", '"']
         create_table_cmd = create_table_cmd_list.join(' ')
         if @verbose
@@ -73,6 +74,7 @@ module Muzzy
         cmds = [*mysqlimport_cmd_list, @database_name, '--local', @filepath]
         cmds.push "--ignore-lines=#{option[:first_row_is_header] ? 1 : 0}"
         cmds.push('--fields_enclosed_by="')
+        cmds.push("--lines-terminated-by=#{lines_terminated_by}")
 
         if option[:fields_terminated_by]
           cmds.push("--fields_terminated_by=#{option[:fields_terminated_by]}")
@@ -90,6 +92,17 @@ module Muzzy
       end
 
       private
+
+      def lines_terminated_by
+        std_out, _ = Open3.capture2('file', @filepath)
+        if std_out =~ /with\sCR\s/
+          return '\r'
+        end
+        if std_out =~ /with\sCRLF\s/
+          return '\r\n'
+        end
+        return '\n'
+      end
 
       def mysql_cmd_list
         return @mysql_cmd_list if defined?(@mysql_cmd_list)
