@@ -5,7 +5,7 @@ module Muzzy
     # nil: could not detect
     def self.detect(rows)
       first_row, second_row = rows || []
-      return nil if first_row.empty?
+      return nil if first_row.nil? || first_row.empty?
 
       if first_row.any?{|str| str.to_s.match(/_id/i) }
         return true
@@ -15,7 +15,7 @@ module Muzzy
         return false
       end
 
-      return nil if second_row.empty?
+      return nil if second_row.nil? || second_row.empty?
 
       # I can't detect first_row is header or not, so guess now.
 

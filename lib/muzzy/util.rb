@@ -10,7 +10,7 @@ module Muzzy
       from_fenc = 'UTF-8'
       File.open(filepath, "rt") do |f|
         s = f.readlines
-        from_fenc = NKF.guess(s.join('')).to_s
+        from_fenc = NKF.guess(s.join).to_s
       end
       open(filepath, "rb:#{from_fenc}:UTF-8", undef: :replace) do |f|
         CSV.new(f, col_sep: col_sep).each.with_index do |row, i|
